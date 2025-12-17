@@ -1,0 +1,2 @@
+# CSBMinigames
+CSB Minigames, standalone.
