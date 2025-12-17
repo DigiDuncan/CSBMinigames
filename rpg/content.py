@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 
 from typing import Any
-from rpg.engine import classproperty, MessageType, AttackType, TargetType, CharacterStat, Character, Attack, ComboAttack, attack_def, stat_attack_def, Effect, apply_def, update_def, resolved_def, AI, Fighter, Encounter
+from rpg.engine import classproperty, MessageType, AttackType, TargetType, CharacterStat, Character, Attack, ComboAttack, attack_def, stat_attack_def, Effect, apply_def, update_def, resolved_def, AI, Fighter, FighterAttack, Encounter
 
 # replacements for renpy specific objects
 Displayable = Any
@@ -341,6 +341,13 @@ class Attacks:
     @classmethod
     def get(cls, k: str, default: Attack | None = None) -> Attack | None:
         return cls.__dict__.get(k, default)
+
+# Special actions used by the Encounter and the Ai.
+# They can't be used until the actions are defined. This is technically
+# not needed in renpy since everything is global, but I'm trying to avoid
+# stink.
+Encounter.DEFEND_ACTION = FighterAttack(Attacks.DEFEND)
+Encounter.HEAL_EX = FighterAttack(Attacks.HEAL_EX)
 
 class Characters:
     NONE = None
