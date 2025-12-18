@@ -81,6 +81,7 @@ class MessageType(StrEnum):
     ATTACK = "attack"
     CHARACTER = "character"
     EFFECT = "effect"
+    INDICATOR = "indicator"
 
 class TargetType(StrEnum):
     ALL = "all"
@@ -632,8 +633,8 @@ class Indicator:
 
 
 @dataclass
-class Message:
-    message: str
+class Signal[M: str | Indicator]:
+    message: M
     typ: MessageType
 
 
@@ -656,9 +657,8 @@ class Encounter:
         self.intro_text = intro_text # intro display text
         self.turn: int = initial_turn # current turn
 
-        self.upcoming_attacks: list[tuple[FighterAttack | None, tuple[Fighter, ...]]] = []
-        self.indicator_queue: Queue[Indicator] = Queue()
-        self.message_queue: Queue[Message] = Queue()
+        self.upcoming_attacks: list[tuple[Fighter, FighterAttack | None, tuple[Fighter, ...]]] = []
+        self.signal_queue: Queue[Signal[str | Indicator]] = Queue()
 
     @property
     def allies(self) -> tuple[Fighter, ...]:
@@ -688,20 +688,18 @@ class Encounter:
             return None
 
     def display_indicator(self, target: Fighter, typ: IndicatorType | Effect, amount: int | None = None):
-        self.indicator_queue.put(Indicator(target, typ, amount))
-
-    def get_next_indicator(self) -> Indicator | None:
-        if self.indicator_queue.empty():
-            return
-        return self.indicator_queue.get()
+        self.signal_queue.put(Signal(Indicator(target, typ, amount), MessageType.INDICATOR))
 
     def send_message(self, text: str, typ: MessageType):
-        self.message_queue.put(Message(text, typ))
+        self.signal_queue.put(Signal(text, typ))
 
-    def get_next_message(self) -> Message | None:
-        if self.message_queue.empty():
+    def get_next_signal(self) -> Signal[str | Indicator] | None:
+        if self.signal_queue.empty():
             return
-        return self.message_queue.get()
+        return self.signal_queue.get()
+
+    def has_signals(self) -> bool:
+        return not self.signal_queue.empty()
 
     def defend_fighter(self, fighter: Fighter):
         fighter.next_attack = self.DEFEND_ACTION
@@ -709,6 +707,7 @@ class Encounter:
 
     def affect_fighter(self, fighter: Fighter):
         fighter.reset_effects()
+        self.send_message(f"{fighter.name} reset effects!", MessageType.DEBUG)
         for effect in fighter.effects:
             effect.apply(self)
 
