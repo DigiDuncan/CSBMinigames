@@ -76,13 +76,6 @@ class IndicatorType(StrEnum):
     ATK = "atk"
     ACC = "acc"
 
-class MessageType(StrEnum):
-    DEBUG = "debug"
-    ATTACK = "attack"
-    CHARACTER = "character"
-    EFFECT = "effect"
-    INDICATOR = "indicator"
-
 class TargetType(StrEnum):
     ALL = "all"
     ENEMY = "enemy"
@@ -362,7 +355,7 @@ class AI:
         # Sort enemies by weak-first
         enemies = sorted(enemies, key = lambda x: (x.hit_points * (1.0 - (x.defense / 100.0))))
 
-        encounter.send_message(f"{subject.character.display_name}: Choosing an attack...", MessageType.DEBUG)
+        encounter.send_debug(f"{subject.character.display_name}: Choosing an attack...", "AI.choose_attack", ai = self, subject = subject)
 
         available_attacks = tuple(a for a in subject.attacks if a.available)
 
@@ -405,11 +398,8 @@ class AI:
             scores.append(score)
 
         # Choose an attack.
-        encounter.send_message(f"{available_attacks}, {scores}", MessageType.DEBUG)
+        encounter.send_debug(f"{available_attacks}, {scores}", "AI.choose_attack", AI = self, subject = subject)
         return random.choices(available_attacks, weights = scores)[0]
-
-        # print(f"[AI: {self.name}] {subject.name} uses {atk.name} on {sentence_join([t.name for t in subwho])}!")  # type: ignore
-        # renpy.notify(f"{subject.display_name} uses {what.name} on {sentence_join([t.display_name for t in subwho])}!")  # type: ignore
 
     def __str__(self) -> str:
         return f"<AI {self.name}>"
@@ -619,25 +609,67 @@ class FighterEffect:
         self.effect.update(encounter, self.source, self.target, self.update_overrides)
 
     def resolved(self, encounter: Encounter) -> bool:
-        encounter.send_message(f"turn check for {self.effect.name} affecting {self.target.name}: {self.start_turn + self.duration}, {encounter.turn + 1}", MessageType.DEBUG)
         if self.duration != 0 and self.start_turn + self.duration <= encounter.turn + 1: # Add 1 as this means that effects that last 1 turn don't get two run_effects
-            encounter.send_message(f"{self.effect.name} affecting {self.target.name} is resolved", MessageType.DEBUG)
             return True
         if self.effect.resolved is not None:
             return self.effect.resolved(encounter, self.source, self.target, self.resolved_overrides)
         return False
 
+
 @dataclass
-class Indicator:
+class Signal:
+    pass
+
+@dataclass
+class MessageSignal(Signal):
+    message: str
+
+@dataclass
+class CharacterSignal(Signal):
+    message: str
+    character: Fighter
+
+@dataclass
+class DebugSignal(Signal):
+    message: str
+    source: str
+    details: dict[str, Any]
+
+@dataclass
+class AttackSignal(Signal):
+    message: str
+    attack: FighterAttack
+    attacker: Fighter
+    targets: tuple[Fighter, ...]
+
+@dataclass
+class EffectSignal(Signal):
+    message: str
+    effect: FighterEffect
     source: Fighter
-    typ: IndicatorType | Effect
+    target: Fighter
+
+@dataclass
+class IndicatorSignal(Signal):
+    target: Fighter
+    typ: IndicatorType
     value: int | None = None
 
-
 @dataclass
-class Signal[M: str | Indicator]:
-    message: M
-    typ: MessageType
+class EffectIndicatorSignal(Signal):
+    target: Fighter
+    typ: Effect
+    value: int | None = None
+
+class Signals: # Can't be an enum if we want the cool type mapping in match blocks
+    BASE = Signal
+    MESSAGE = MessageSignal
+    CHARACTER = CharacterSignal
+    DEBUG = DebugSignal
+    ATTACK = AttackSignal
+    EFFECT = EffectSignal
+    INDICATOR = IndicatorSignal
+    EFFECT_INDICATOR = EffectIndicatorSignal
 
 
 class Encounter:
@@ -660,7 +692,7 @@ class Encounter:
         self.turn: int = initial_turn # current turn
 
         self.upcoming_attacks: list[tuple[Fighter, FighterAttack | None, tuple[Fighter, ...]]] = []
-        self.signal_queue: Queue[Signal[str | Indicator]] = Queue()
+        self.signal_queue: Queue[Signal] = Queue()
 
     @property
     def allies(self) -> tuple[Fighter, ...]:
@@ -689,13 +721,33 @@ class Encounter:
         else:
             return None
 
+    # -- SIGNAL METHODS --
+
     def display_indicator(self, target: Fighter, typ: IndicatorType | Effect, amount: int | None = None):
-        self.signal_queue.put(Signal(Indicator(target, typ, amount), MessageType.INDICATOR))
+        if isinstance(typ, IndicatorType):
+            self.send_signal(IndicatorSignal(target, typ, amount))
+            return
+        self.send_signal(EffectIndicatorSignal(target, typ, amount))
 
-    def send_message(self, text: str, typ: MessageType):
-        self.signal_queue.put(Signal(text, typ))
+    def send_debug(self, message: str, source: str, **kwds: Any):
+        self.send_signal(DebugSignal(message, source, kwds))
 
-    def get_next_signal(self) -> Signal[str | Indicator] | None:
+    def send_message(self, message: str, character: Fighter | None = None):
+        if character is None:
+            self.send_signal(MessageSignal(message))
+            return
+        self.send_signal(CharacterSignal(message, character))
+
+    def signal_attack(self, message: str, attack: FighterAttack, attacker: Fighter, targets: tuple[Fighter, ...]):
+        self.send_signal(AttackSignal(message, attack, attacker, targets))
+
+    def signal_effect(self, message: str, effect: FighterEffect):
+        self.send_signal(EffectSignal(message, effect, effect.source, effect.target))
+
+    def send_signal(self, message: Signal):
+        self.signal_queue.put(message)
+
+    def get_next_signal(self) -> Signal | None:
         if self.signal_queue.empty():
             return
         return self.signal_queue.get()
@@ -703,13 +755,15 @@ class Encounter:
     def has_signals(self) -> bool:
         return not self.signal_queue.empty()
 
+    # -- FIGHTER MANIPULATION METHODS --
+
     def defend_fighter(self, fighter: Fighter):
         fighter.next_attack = self.DEFEND_ACTION
         fighter.next_targets = (fighter,)
 
     def affect_fighter(self, fighter: Fighter):
         fighter.reset_effects()
-        self.send_message(f"{fighter.name} reset effects!", MessageType.DEBUG)
+        self.send_debug(f"{fighter.name} reset effects!", "Encounter.affect_fighter", fighter=fighter)
         for effect in fighter.effects:
             effect.apply(self)
 
@@ -737,18 +791,18 @@ class Encounter:
         target.effects.append(new_effect)
 
         if not silent and (msg := new_effect.get_apply_msg()):
-            self.send_message(msg, MessageType.EFFECT)
+            self.signal_effect(msg, new_effect)
 
         if not lazy:
             self.affect_fighter(target)
 
     def remove_effect(self, effect: FighterEffect, silent: bool = False, lazy: bool = False):
         if effect.target not in self.fighters:
-            self.send_message("How did we get here??? (A non-existant/dead fighter has lost an effect)", MessageType.DEBUG)
+            self.send_debug("How did we get here??? (A non-existant/dead fighter has lost an effect)", "Encounter.remove_effect", effect = effect)
         effect.target.effects.remove(effect)
 
         if not silent and (msg := effect.get_tick_msg(resolved=True)):
-            self.send_message(msg, MessageType.EFFECT)
+            self.signal_effect(msg, effect)
 
         if not lazy:
             self.affect_fighter(effect.target)
@@ -768,7 +822,7 @@ class Encounter:
                 group = "all negative"
             else:
                 group = "all"
-            self.send_message(f"{fighter.display_name} had {group} effects removed!", MessageType.EFFECT)
+            self.send_message(f"{fighter.display_name} had {group} effects removed!", fighter)
 
     def modify_fighter(self, fighter: Fighter, stat: CharacterStat, amount: float, permanent: bool = True):
         match stat:
@@ -777,7 +831,7 @@ class Encounter:
                 new = int(old + amount)
                 fighter.hit_points = new
                 self.display_indicator(fighter, IndicatorType.HP, new - old)
-                self.send_message(f"Set {fighter.character.display_name}'s hit points to {fighter.hit_points}!", MessageType.DEBUG)
+                self.send_debug(f"Set {fighter.character.display_name}'s hit points to {fighter.hit_points}!", "Encounter.modify_fighter", stat=stat, old = old, new = new, prem = permanent)
             case CharacterStat.DEFENSE:
                 old = fighter.defense
                 new = int(old + amount)
@@ -786,7 +840,7 @@ class Encounter:
                     fighter.base_def = fighter.base_def + change
                 fighter.defense = new
                 self.display_indicator(fighter, IndicatorType.DEF, change)
-                self.send_message(f"Set {fighter.character.display_name}'s defense to {fighter.defense}!", MessageType.DEBUG)
+                self.send_debug(f"Set {fighter.character.display_name}'s defense to {fighter.defense}!", "Encounter.modify_fighter", stat=stat, old = old, new = new, prem = permanent)
             case CharacterStat.ATTACK:
                 old = fighter.attack
                 new = max(5, int(old + amount))
@@ -795,7 +849,7 @@ class Encounter:
                     fighter.base_atk = max(5, int(fighter.base_atk + change))
                 fighter.attack = new
                 self.display_indicator(fighter, IndicatorType.ATK, change)
-                self.send_message(f"Set {fighter.character.display_name}'s attack to {fighter.attack}!", MessageType.DEBUG)
+                self.send_debug(f"Set {fighter.character.display_name}'s attack to {fighter.attack}!", "Encounter.modify_fighter", stat=stat, old = old, new = new, prem = permanent)
             case CharacterStat.ACCURACY:
                 old = fighter.accuracy
                 new = max(0, min(100, int(old + amount)))
@@ -804,7 +858,7 @@ class Encounter:
                     fighter.base_acc = max(0, min(100, fighter.base_acc + change))
                 fighter.accuracy = new
                 self.display_indicator(fighter, IndicatorType.ACC, change)
-                self.send_message(f"Set {fighter.character.display_name}'s accuracy to {fighter.accuracy}!", MessageType.DEBUG)
+                self.send_debug(f"Set {fighter.character.display_name}'s accuracy to {fighter.accuracy}!", "Encounter.modify_fighter", stat=stat, old = old, new = new, prem = permanent)
 
     def scale_fighter(self, fighter: Fighter, stat: CharacterStat, mult: float, permanent: bool = True):
         match stat:
@@ -813,7 +867,7 @@ class Encounter:
                 new = int(old * mult)
                 fighter.hit_points = new
                 self.display_indicator(fighter, IndicatorType.HP, new - old)
-                self.send_message(f"Scaled {fighter.character.display_name}'s hit points by {mult}x!", MessageType.DEBUG)
+                self.send_debug(f"Scaled {fighter.character.display_name}'s hit points by {mult}x!", "Encounter.scale_fighter", stat=stat, old = old, new = new, prem = permanent)
             case CharacterStat.DEFENSE:
                 old = fighter.defense
                 new = int(old * mult)
@@ -822,7 +876,7 @@ class Encounter:
                     fighter.base_def = fighter.base_def + change
                 fighter.defense = new
                 self.display_indicator(fighter, IndicatorType.DEF, change)
-                self.send_message(f"Scaled {fighter.character.display_name}'s defense by {mult}x!", MessageType.DEBUG)
+                self.send_debug(f"Scaled {fighter.character.display_name}'s defense by {mult}x!", "Encounter.scale_fighter", stat=stat, old = old, new = new, prem = permanent)
             case CharacterStat.ATTACK:
                 old = fighter.attack
                 new = max(5, int(old * mult))
@@ -831,7 +885,7 @@ class Encounter:
                     fighter.base_atk = max(5, int(fighter.base_atk + change))
                 fighter.attack = new
                 self.display_indicator(fighter, IndicatorType.ATK, change)
-                self.send_message(f"Scaled {fighter.character.display_name}'s attack by {mult}x!", MessageType.DEBUG)
+                self.send_debug(f"Scaled {fighter.character.display_name}'s attack by {mult}x!", "Encounter.scale_fighter", stat=stat, old = old, new = new, prem = permanent)
             case CharacterStat.ACCURACY:
                 old = fighter.accuracy
                 new = max(0, min(100, int(old * mult)))
@@ -840,7 +894,7 @@ class Encounter:
                     fighter.base_acc = max(0, min(100, fighter.base_acc + change))
                 fighter.accuracy = new
                 self.display_indicator(fighter, IndicatorType.ACC, change)
-                self.send_message(f"Scaled {fighter.character.display_name}'s accuracy by {mult}x!", MessageType.DEBUG)
+                self.send_debug(f"Scaled {fighter.character.display_name}'s accuracy by {mult}x!", "Encounter.scale_fighter", stat=stat, old = old, new = new, prem = permanent)
 
     def possible_targets(self, fighter: Fighter, attack: Attack | ComboAttack) -> tuple[Fighter, ...]:
         match attack.targets:
@@ -902,21 +956,22 @@ class Encounter:
                         continue
                     targets = self.choose_fighters(fighter, attack.attack)
 
-                    self.send_message(f"[AI: {fighter.ai.name}] {fighter.character.name} uses {attack.name} on {", ".join(target.name for target in targets)}!", MessageType.DEBUG)
-
             self.upcoming_attacks.append((fighter, attack, targets))
 
         # ! NOTE ! Because all attacks happen after the AI have chosen they behave differently in previous engine
         for fighter, attack, targets in self.upcoming_attacks:
             if attack is None:
                 continue
-            self.send_message(f"{fighter.display_name} used {attack.name}!", MessageType.ATTACK)
+            self.signal_attack(f"{fighter.display_name} used {attack.name}!", attack, fighter, targets)
             hit = random.random() <= (attack.attack.accuracy / 100.0 * fighter.accuracy / 100.0) and not fighter.dead
 
             if hit:
                 attack.use(self, fighter, targets) # Actually use the fighter's attack so call `damage_fighters`
             else:
-                self.send_message(f"{fighter.character.display_name} missed!", MessageType.ATTACK)
+                self.send_message(f"{fighter.character.display_name} missed!", fighter)
+
+            # print(f"[AI: {self.name}] {subject.name} uses {atk.name} on {sentence_join([t.name for t in subwho])}!")  # type: ignore
+            # renpy.notify(f"{subject.display_name} uses {what.name} on {sentence_join([t.display_name for t in subwho])}!")  # type: ignore
 
     def run_effects(self):
         # Update the effects applied to every fighter.
@@ -928,14 +983,10 @@ class Encounter:
                 effect.update(self)
                 is_resolved = effect.resolved(self)
                 if msg := effect.get_tick_msg(is_resolved):
-                    self.send_message(msg, MessageType.EFFECT)
+                    self.signal_effect(msg, effect)
                 if is_resolved:
                     self.remove_effect(effect, silent = True)
-
-            self.send_message(f"{fighter.name} has effects: {", ".join(effect.effect.name for effect in fighter.effects)}", MessageType.DEBUG)
-            fighter.reset_effects()
-            for effect in fighter.effects:
-                effect.apply(self)
+            self.affect_fighter(fighter)
 
     def cleanup_turn(self):
         for fighter in tuple(self.fighters):
@@ -947,12 +998,12 @@ class Encounter:
                     continue
                 attack.turns_until_available -= 1
                 if attack.turns_until_available == 0:
-                    self.send_message(f"{fighter.character.display_name}: {attack.name} now available!", MessageType.ATTACK)
+                    self.send_message(f"{fighter.character.display_name}: {attack.name} now available!", fighter)
                 else:
-                    self.send_message(f"{fighter.character.display_name}: {attack.name} available in {attack.turns_until_available} turns!", MessageType.ATTACK)
+                    self.send_message(f"{fighter.character.display_name}: {attack.name} available in {attack.turns_until_available} turns!", fighter)
 
             if fighter.dead:
-                self.send_message(f"{fighter.display_name} is dead!", MessageType.CHARACTER)
+                self.send_message(f"{fighter.display_name} is dead!", fighter)
                 self.fighters.remove(fighter)
                 fighter.effects.clear()
         self.turn += 1
