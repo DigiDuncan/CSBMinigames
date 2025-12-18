@@ -619,7 +619,9 @@ class FighterEffect:
         self.effect.update(encounter, self.source, self.target, self.update_overrides)
 
     def resolved(self, encounter: Encounter) -> bool:
-        if self.duration != 0 and self.start_turn + self.duration <= encounter.turn:
+        encounter.send_message(f"turn check for {self.effect.name} affecting {self.target.name}: {self.start_turn + self.duration}, {encounter.turn + 1}", MessageType.DEBUG)
+        if self.duration != 0 and self.start_turn + self.duration <= encounter.turn + 1: # Add 1 as this means that effects that last 1 turn don't get two run_effects
+            encounter.send_message(f"{self.effect.name} affecting {self.target.name} is resolved", MessageType.DEBUG)
             return True
         if self.effect.resolved is not None:
             return self.effect.resolved(encounter, self.source, self.target, self.resolved_overrides)
