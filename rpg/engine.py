@@ -842,6 +842,17 @@ class Encounter:
                 self.display_indicator(fighter, IndicatorType.ACC, change)
                 self.send_message(f"Scaled {fighter.character.display_name}'s accuracy by {mult}x!", MessageType.DEBUG)
 
+    def possible_targets(self, fighter: Fighter, attack: Attack | ComboAttack) -> tuple[Fighter, ...]:
+        match attack.targets:
+            case TargetType.SELF:
+                return (fighter,)
+            case TargetType.ALLY:
+                return self.get_team(fighter.enemy)
+            case TargetType.ALL:
+                return tuple(self.fighters)
+            case _:
+                return self.get_team(not fighter.enemy)
+
     def choose_fighters(self, fighter: Fighter, attack: Attack | ComboAttack) -> tuple[Fighter, ...]:
         if fighter.ai is None:
             return ()
@@ -850,14 +861,7 @@ class Encounter:
         if attack.targets == TargetType.SELF:
             return (fighter,)
 
-
-        match attack.targets:
-            case TargetType.ALLY:
-                possible_targets = self.get_team(fighter.enemy)
-            case TargetType.ALL:
-                possible_targets = tuple(self.fighters)
-            case _:
-                possible_targets = self.get_team(not fighter.enemy)
+        possible_targets = self.possible_targets(fighter, attack)
 
         # Shortcut and return all the possible targets when the count is 0
         if attack.target_count == 0:
