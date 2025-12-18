@@ -896,6 +896,8 @@ class Encounter:
                 self.display_indicator(fighter, IndicatorType.ACC, change)
                 self.send_debug(f"Scaled {fighter.character.display_name}'s accuracy by {mult}x!", "Encounter.scale_fighter", stat=stat, old = old, new = new, prem = permanent)
 
+    # -- UTIL TARGETTING METHODS --
+
     def possible_targets(self, fighter: Fighter, attack: Attack | ComboAttack) -> tuple[Fighter, ...]:
         match attack.targets:
             case TargetType.SELF:
@@ -933,6 +935,8 @@ class Encounter:
 
         return tuple(random.choices(possible_targets, weights)[0] for _ in range(attack.target_count))
 
+    # -- GAME LOOP METHODS --
+
     # These are seperate so that we can see the consequences of the player applying the defend effect etc
     def run_attacks(self):
         # run once every actor has chosen their next attack
@@ -968,7 +972,7 @@ class Encounter:
             if hit:
                 attack.use(self, fighter, targets) # Actually use the fighter's attack so call `damage_fighters`
             else:
-                self.send_message(f"{fighter.character.display_name} missed!", fighter)
+                self.signal_attack(f"{fighter.character.display_name} missed!", attack, fighter, targets)
 
             # print(f"[AI: {self.name}] {subject.name} uses {atk.name} on {sentence_join([t.name for t in subwho])}!")  # type: ignore
             # renpy.notify(f"{subject.display_name} uses {what.name} on {sentence_join([t.display_name for t in subwho])}!")  # type: ignore
