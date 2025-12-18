@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 
 from typing import Any
-from rpg.engine import classproperty, MessageType, AttackType, TargetType, CharacterStat, Character, Attack, ComboAttack, attack_def, stat_attack_def, Effect, apply_def, update_def, resolved_def, AI, Fighter, FighterAttack, Encounter
+from rpg.engine import classproperty, AttackType, TargetType, CharacterStat, Character, Attack, ComboAttack, attack_def, stat_attack_def, Effect, apply_def, update_def, resolved_def, AI, Fighter, FighterAttack, Encounter
 
 # replacements for renpy specific objects
 Displayable = Any
@@ -27,7 +27,7 @@ def apply_status_effect(encounter: Encounter, source: Fighter, target: Fighter, 
         scale (bool, optional): Whether the amount is a scale factor or a flat amount. Defaults to False.
     """
     if stat == CharacterStat.HIT_POINTS:
-        encounter.send_message("Cannot change HIT POINTS as a status effect", MessageType.DEBUG)
+        encounter.send_debug("Cannot change HIT POINTS as a status effect", "apply_status_effect", fighter = source, target = target, stat = stat, amount = amount, scale = scale)
         return
 
     if scale:
