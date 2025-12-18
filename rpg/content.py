@@ -218,12 +218,12 @@ class Effects:
     )
     DEFEND = Effect(
         "Defend", "Not today!", True, None, 1,
-        apply=apply_status_effect("{target} is defending!", stat=CharacterStat.DEFENSE, amount=1.5, scale=True)
+        apply=apply_status_effect(stat=CharacterStat.DEFENSE, amount=1.5, scale=True)
     )
 
 
 class Attacks:
-    DEFEND = Attack("Defend", "Dragon doesn't know how to write these", defend_targets(), targets=TargetType.SELF)
+    DEFEND = Attack("Defend", "Dragon doesn't know how to write these", defend_targets(), targets=TargetType.SELF, accuracy=100)
     PUNCH = Attack("Punch", "A simple punch.", damage_fighters())
     RAW_CHOP = Attack("Raw Chop", "Hiya!", damage_fighters()) # , ex = False
     CS_AP_DOWN = Attack("CS DEF Down", "Bring DEF of an enemy down.", change_stat(stat = CharacterStat.DEFENSE, mult = 0.75)) # , ex = False
