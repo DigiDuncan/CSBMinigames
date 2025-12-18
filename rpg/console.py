@@ -6,6 +6,7 @@ from typing import Sequence
 from util.ansi import ANSI
 
 import rpg.engine as rpg
+from rpg.engine import Signal, Signals
 
 class Fight:
 
@@ -80,40 +81,37 @@ class Fight:
             if signal is None:
                 continue
 
-            if signal.typ == rpg.MessageType.INDICATOR:
-                self.process_indicator(signal) # type: ignore -- TODO: this is due to bad handling of messages
-            else:
-                self.process_message(signal) # type: ignore -- TODO: this is due to bad handling of messages
+            message = ""
+            match signal:
+                case Signals.MESSAGE():
+                    message = signal.message
+                case Signals.CHARACTER():
+                    message = ANSI.RENDER(ANSI.REVERSE_COLORS, f"[{signal.character.name}]:") + ANSI.RENDER(ANSI.BACKGROUND_GREEN, signal.message)
+                case Signals.DEBUG():
+                    if not self.show_debug:
+                        continue
+                    message = ANSI.RENDER(ANSI.REVERSE_COLORS, f"[DEBUG - {signal.source}]: {signal.message}")
+                case Signals.ATTACK():
+                    message = ANSI.RENDER(ANSI.REVERSE_COLORS, f"[{signal.attacker.name} => {",".join(target.name for target in signal.targets)}]:") + ANSI.RENDER(ANSI.BACKGROUND_RED, signal.message)
+                case Signals.EFFECT():
+                    message = ANSI.RENDER(ANSI.REVERSE_COLORS, f"[{signal.source.name} => {signal.target.name}]:") + ANSI.RENDER(ANSI.BACKGROUND_RED, signal.message)
+                case Signals.INDICATOR():
+                    message = self.process_indicator(signal)
+                case Signal():
+                    continue # Blank signal does nothng
 
-    def process_indicator(self, signal: rpg.Signal[rpg.Indicator]):
-        indicator = signal.message
-        match indicator.typ:
-            case rpg.IndicatorType.HP:
-                print(ANSI.RENDER(ANSI.BACKGROUND_BRIGHT_RED, f"{indicator.source.display_name}: {indicator.typ} {indicator.value}"))
-            case rpg.IndicatorType.DEF:
-                print(ANSI.RENDER(ANSI.BACKGROUND_BRIGHT_GREEN, f"{indicator.source.display_name}: {indicator.typ} {indicator.value}"))
-            case rpg.IndicatorType.ATK:
-                print(ANSI.RENDER(ANSI.BACKGROUND_BRIGHT_BLUE, f"{indicator.source.display_name}: {indicator.typ} {indicator.value}"))
-            case rpg.IndicatorType.ACC:
-                print(ANSI.RENDER(ANSI.BACKGROUND_BRIGHT_MAGENTA, f"{indicator.source.display_name}: {indicator.typ} {indicator.value}"))
-            case _:
-                # indicator is effect and should use icon
-                pass
+            print(message)
 
-    def process_message(self, signal: rpg.Signal[str]):
+    def process_indicator(self, signal: Signals.INDICATOR):
         match signal.typ:
-            case rpg.MessageType.DEBUG:
-                if not self.show_debug:
-                    return
-                print(ANSI.RENDER(ANSI.FOREGROUND_RED, signal.message))
-            case rpg.MessageType.ATTACK:
-                print(ANSI.RENDER(ANSI.BACKGROUND_RED, signal.message))
-            case rpg.MessageType.CHARACTER:
-                print(ANSI.RENDER(ANSI.BACKGROUND_GREEN, signal.message))
-            case rpg.MessageType.EFFECT:
-                print(ANSI.RENDER(ANSI.BACKGROUND_BLUE, signal.message))
-            case rpg.MessageType.INDICATOR:
-                return
+            case rpg.IndicatorType.HP:
+                return ANSI.RENDER(ANSI.BACKGROUND_BRIGHT_RED, f"{signal.target.display_name}: {signal.typ} {signal.value}")
+            case rpg.IndicatorType.DEF:
+                return ANSI.RENDER(ANSI.BACKGROUND_BRIGHT_GREEN, f"{signal.target.display_name}: {signal.typ} {signal.value}")
+            case rpg.IndicatorType.ATK:
+                return ANSI.RENDER(ANSI.BACKGROUND_BRIGHT_BLUE, f"{signal.target.display_name}: {signal.typ} {signal.value}")
+            case rpg.IndicatorType.ACC:
+                return ANSI.RENDER(ANSI.BACKGROUND_BRIGHT_MAGENTA, f"{signal.target.display_name}: {signal.typ} {signal.value}")
 
     def run(self):
         while self.encounter.won is None:
