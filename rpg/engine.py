@@ -890,7 +890,7 @@ class Encounter:
             if attack is None:
                 if fighter.ai is None:
                     # player has not picked an attack for this fighter so they just defend.
-                    self.upcoming_attacks.append((self.DEFEND_ACTION, (fighter,)))
+                    self.upcoming_attacks.append((fighter, self.DEFEND_ACTION, (fighter,)))
                     continue
                 else:
                     # fighter has not picked attack and has an AI
@@ -898,18 +898,19 @@ class Encounter:
                         continue
                     attack = fighter.ai.choose_attack(self, fighter)
                     if attack is None:
-                        self.upcoming_attacks.append((self.DEFEND_ACTION, (fighter,)))
+                        self.upcoming_attacks.append((fighter, self.DEFEND_ACTION, (fighter,)))
                         continue
                     targets = self.choose_fighters(fighter, attack.attack)
 
                     self.send_message(f"[AI: {fighter.ai.name}] {fighter.character.name} uses {attack.name} on {", ".join(target.name for target in targets)}!", MessageType.DEBUG)
 
-            self.upcoming_attacks.append((attack, targets))
+            self.upcoming_attacks.append((fighter, attack, targets))
 
         # ! NOTE ! Because all attacks happen after the AI have chosen they behave differently in previous engine
-        for fighter, (attack, targets) in zip(self.turn_order, self.upcoming_attacks):
+        for fighter, attack, targets in self.upcoming_attacks:
             if attack is None:
                 continue
+            self.send_message(f"{fighter.display_name} used {attack.name}!", MessageType.ATTACK)
             hit = random.random() <= (attack.attack.accuracy / 100.0 * fighter.accuracy / 100.0) and not fighter.dead
 
             if hit:
@@ -931,6 +932,7 @@ class Encounter:
                 if is_resolved:
                     self.remove_effect(effect, silent = True)
 
+            self.send_message(f"{fighter.name} has effects: {", ".join(effect.effect.name for effect in fighter.effects)}", MessageType.DEBUG)
             fighter.reset_effects()
             for effect in fighter.effects:
                 effect.apply(self)
@@ -950,6 +952,7 @@ class Encounter:
                     self.send_message(f"{fighter.character.display_name}: {attack.name} available in {attack.turns_until_available} turns!", MessageType.ATTACK)
 
             if fighter.dead:
+                self.send_message(f"{fighter.display_name} is dead!", MessageType.CHARACTER)
                 self.fighters.remove(fighter)
                 fighter.effects.clear()
         self.turn += 1
