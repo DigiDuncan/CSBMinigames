@@ -972,7 +972,7 @@ class Encounter:
             if hit:
                 attack.use(self, fighter, targets) # Actually use the fighter's attack so call `damage_fighters`
             else:
-                self.signal_attack(f"{fighter.character.display_name} missed!", attack, fighter, targets)
+                self.send_message(f"{fighter.character.display_name} missed!", fighter)
 
             # print(f"[AI: {self.name}] {subject.name} uses {atk.name} on {sentence_join([t.name for t in subwho])}!")  # type: ignore
             # renpy.notify(f"{subject.display_name} uses {what.name} on {sentence_join([t.display_name for t in subwho])}!")  # type: ignore
