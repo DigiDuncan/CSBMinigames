@@ -444,6 +444,9 @@ class Character: # TODO: Workshop -- I'd like fighter to be used by encounter, b
             sprite if sprite is not None else self.sprite
         )
 
+    def __set_name__(self, owner: type, name: str):
+        self.assigned_name = name
+
 
 # -- Encounter Unique Objects --
 
