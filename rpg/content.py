@@ -154,25 +154,25 @@ def draw_in(encounter: Encounter, fighter: Fighter, targets: tuple[Fighter, ...]
     attack_type = random.randint(1, 4)
     match attack_type:
         case 1: # ap up, allies
-            encounter.send_message("[Draw In] DEF Up", MessageType.DEBUG)
+            encounter.send_debug("[Draw In] DEF Up", "draw_in")
             allies = True
             stat = CharacterStat.DEFENSE
         case 2: # ap down, enemies
-            encounter.send_message("[Draw In] DEF Down", MessageType.DEBUG)
+            encounter.send_debug("[Draw In] DEF Down", "draw_in")
             allies = False
             stat = CharacterStat.DEFENSE
             mult = 1.0 / mult
         case 3: # atk up, allies
-            encounter.send_message("[Draw In] ATK Up", MessageType.DEBUG)
+            encounter.send_debug("[Draw In] ATK Up", "draw_in")
             allies = True
             stat = CharacterStat.ATTACK
         case 4: # atk down, enemies
-            encounter.send_message("[Draw In] ATK Down", MessageType.DEBUG)
+            encounter.send_debug("[Draw In] ATK Down", "draw_in")
             allies = False
             stat = CharacterStat.ATTACK
             mult = 1.0 / mult
         case _: # impossible case
-            encounter.send_message("[Draw In] Impossible Result", MessageType.DEBUG)
+            encounter.send_debug("[Draw In] Impossible Result", "draw_in")
             return
 
     for target in targets:
@@ -188,7 +188,7 @@ def ai_mimic(encounter: Encounter, fighter: Fighter, targets: tuple[Fighter, ...
         attack = targets[0].character.attacks[0]
     if attack.name == "AI Mimic":
         attack = Attacks.PUNCH
-    encounter.send_message(f"[AI Mimic] running {attack.name}...", MessageType.DEBUG)
+    encounter.send_debug(f"[AI Mimic] running {attack.name}...", "ai_mimic")
     attack.func(encounter, fighter, targets)
 
 class AIType:
